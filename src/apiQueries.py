@@ -3,8 +3,10 @@ import requests
 import time
 from SPARQLWrapper import SPARQLWrapper, JSON
 import tmdbsimple as tmdb
+import multiprocessing
 
 wiki_Qrl = 'https://query.wikidata.org/sparql'
+
 
 # Ref : https://stackoverflow.com/questions/5980042/how-to-implement-the-verbose-or-v-option-into-a-script
 def _verboseprint(*args):
@@ -44,6 +46,16 @@ def match_movies(tmdb_response, querried_movie):
                     movie_details['budget']]
     return None
 
+def multiprocess_query(movie_list, api_key, nb_workers = 5, task = None):
+    num_workers = nb_workers # number of workers you want to use
+    chunk_size = len(movie_list) // num_workers # size of each chunk
+    chunks = [movie_list[i:i+chunk_size] for i in range(0, len(movie_list), chunk_size)] # split the dataframe into chunks
+    pool = multiprocessing.Pool(num_workers) # create a pool of workers
+    results = pool.map(task,(chunks,api_key)) # apply the worker function to each chunk
+    pool.close() # close the pool
+    pool.join() # wait for all the workers to finish
+    merged_df = pd.concat(results) # concatenate the dataframes returned by each worker
+    return merged_df
 
 def getInfoFromTMDB(movie_list,key = None,verbose = False):
     if verbose:
