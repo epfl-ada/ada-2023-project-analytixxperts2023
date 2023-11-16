@@ -143,3 +143,32 @@ def count_single_character_occurrence(text, character_name):
         index = text.find(character_name, index + len(character_name))
 
     return count
+
+def compute_apparition_frequency(character_name, text):
+    """
+    Compute the maximum count of the character's name in the related plot summary.
+    Parameters:
+    - character_name: the name of the character
+    - text: the plot summary related to the character
+    Return:
+    -The apparition frequency of the character's name in the plot summary
+    """
+
+    # List of common prepositions to exclude from counting if some are countains in the character's name
+    prepo_list = ['the', 'at', 'in', 'on', 'of', 'for', 'to', 'with', 'from', 'by', 'about', 'as', 'into', 'like', 'through', 'after', 'over', 
+                  'between', 'out', 'against', 'during', 'without', 'before', 'under', 'around', 'among']
+    
+    # Split the character name into a list of words
+    splited_name = character_name.split()
+    
+    # Initialize the maximum count of the character's name in the text
+    max_count = 0
+    
+    # Iterate through each part of the character's name
+    for name in splited_name:
+        # Check if the count of the name in the text is greater than the current maximum count and if the name is not a preposition
+        if text.count(name) > max_count and name not in prepo_list:
+            max_count = text.count(name)
+    
+    # Return the maximum count of the character's name in the text
+    return max_count
