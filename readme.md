@@ -1,7 +1,7 @@
 # Abstract 
 
-The topic of diversity is gaining increasing attention nowadays. It is prevalent in many fields and numerous studies such as [this McKinsey & Company report](https://www.mckinsey.com/capabilities/people-and-organizational-performance/our-insights/why-diversity-matters
-) or [this research](https://journals.sagepub.com/doi/abs/10.1177/0146167208328062) try to explain the reasons behind this dynamic that seems to achieve superior research, financial and performance. We would like to assess whether this phenomenon is also applicable to the movie industry and what usage this domain makes of diversity, which will be defined in this work by the age, ethnicity and gender of actors.
+The topic of diversity is gaining increasing attention nowadays. Many studies, like [this McKinsey & Company report](https://www.mckinsey.com/capabilities/people-and-organizational-performance/our-insights/why-diversity-matters
+) or [this research](https://journals.sagepub.com/doi/abs/10.1177/0146167208328062), aim to understand why it leads to improved research, financial outcomes, and performance. We would like to assess whether this phenomenon is also applicable to the movie industry and what usage this domain makes of diversity, which will be defined in this work by the ethnicity, age, and gender of actors.
 A primary analysis will consist in identifying whether the roles assigned to diverse actors fulfil are stereotypical or hold significance to the plot.
 Following this analysis, we will try to evaluate the impact of the casting's diversity on movies' performances.
 
@@ -21,19 +21,20 @@ Impact of diversity on film's commercial performance :
 
 # Datasets 
 
-Our analysis will be mostly performed on the "CMU movie summary corpus". This very rich dataset regroups information about movies, actors, the characters they play in their roles, some summaries and even already performed NLP tasks that allowed to assign personas to the characters in the dataset. 
+Our analysis will be mostly performed on the _"CMU movie summary corpus"_. This very rich dataset regroups information about movies, actors, the characters they play in their roles, some summaries and even already performed NLP tasks that allowed to assign personas to the characters in the dataset. 
 
 To supplement it, we enhance the dataset with external information coming from the TMDB dataset, such as average ratings, vote counts and budgets for the movies that have this information available and that we were able to extract. This will allow us to judge performance on more aspects than the box office revenue that is available in the CMU dataset.
 
 # Methods 
 
 The key variables in our project are "diversity" and "performance," and we have chosen to measure them as follows:
-- Casting diversity: D = {Ethnicity, gender, age}
-- Film performance/success: S = {Box office earnings, ratings, languages, number of subsequent films}
+- Casting diversity: $D$ = {Ethnicity, Gender, Age}
+- Film performance: $S$ = {Box office earnings, Ratings, Languages, Number of subsequent films}
 
-With the complete dataset, our objective is to analyze the correlation between the power set of D and the power set of S. This analysis will provide insights into which variable(s) in D may influence variable(s) in S.
 
-Furthermore, assuming that we identify subsets D' < D and S' < S, we will introduce a third dimension T, to observe how the results evolve over time. To achieve this, we will group movies by time periods and examine whether gender or racial inclusion in the industry over time has had an impact on the success of a movie.
+With the complete dataset, our objective is to analyze the correlation between the power set $P(D)$ and the power set $P(S)$. This analysis will provide insights into which variable(s) in $D$ may influence variable(s) in $S$.
+
+Furthermore, assuming that we identify subsets $D' \subset D$ and $S' \subset S$, we will introduce a third dimension $T$, to observe how the results evolve over time. To achieve this, we will group movies by time periods and examine whether gender or racial inclusion in the industry over time has had an impact on the success of a movie.
 
 More precisely, in order to assess movies' performances, we will try to perform a causal analysis on the different attributes of the performance set S by making a propensity score matching. The matching will minimize the following distance between pairs:
 $$Argmin_{i,j} (\alpha_k(M_{c_k,i} - M_{c_k,j}))$$
