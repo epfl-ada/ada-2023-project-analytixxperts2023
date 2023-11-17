@@ -7,18 +7,10 @@ import multiprocessing
 
 wiki_Qrl = 'https://query.wikidata.org/sparql'
 
-
-# Ref : https://stackoverflow.com/questions/5980042/how-to-implement-the-verbose-or-v-option-into-a-script
-def _verboseprint(*args):
-    # Print each argument separately so caller doesn't need to
-    # stuff everything to be printed into a single string
-    for arg in args:
-        print(arg)
-
 def compare_titles(title1,title_list):
     '''
     Checks if there is a match between a str and a list of str objects.
-    The process is performed in lower cases
+    The comparison is performed in lower cases
     '''
     list_lower = [x.lower() for x in title_list]
     if title1.lower() in list_lower:
@@ -47,17 +39,27 @@ def match_movies(tmdb_response, querried_movie):
     return None
 
 def multiprocess_query(movie_list, api_key, nb_workers = 5, task = None):
-    num_workers = nb_workers # number of workers you want to use
-    chunk_size = len(movie_list) // num_workers # size of each chunk
-    chunks = [movie_list[i:i+chunk_size] for i in range(0, len(movie_list), chunk_size)] # split the dataframe into chunks
-    pool = multiprocessing.Pool(num_workers) # create a pool of workers
-    results = pool.map(task,(chunks,api_key)) # apply the worker function to each chunk
-    pool.close() # close the pool
-    pool.join() # wait for all the workers to finish
-    merged_df = pd.concat(results) # concatenate the dataframes returned by each worker
+    '''
+    Multitasks the query to the TMDB database.
+    '''
+    # Split dataset in chunk of equal size for workers
+    chunk_size = len(movie_list) // nb_workers 
+    chunks = [movie_list[i:i+chunk_size] for i in range(0, len(movie_list), chunk_size)] 
+    # Create a pool with the specified number of workers and the task to accomplish
+    pool = multiprocessing.Pool(nb_workers) 
+    results = pool.map(task,(chunks,api_key))
+    # Wait for all workers to end and concatenate their results
+    pool.join() 
+    merged_df = pd.concat(results) 
     return merged_df
 
 def getInfoFromTMDB(movie_list,key = None,verbose = False):
+    '''
+    Takes a dataframe of movie titles along with durations and returns the 
+    vote_counts, vote_averages and budget all the matches found in the 
+    TMDB database
+    '''
+    #Define the verbose function to print informations during the process
     if verbose:
         vprint = _verboseprint
     else:
@@ -66,6 +68,7 @@ def getInfoFromTMDB(movie_list,key = None,verbose = False):
     tmdb.API_KEY = key
     matched_results = []
     for idx, query in movie_list.iterrows():
+        # Search for the list of movies containing the queried name
         search = tmdb.Search()
         response = search.movie(query=query[0])
         match = match_movies(response,query)
@@ -75,12 +78,10 @@ def getInfoFromTMDB(movie_list,key = None,verbose = False):
     info_df = pd.DataFrame(data = matched_results,columns=['title','vote_average',
                                                            'vote_counts','budget'])
     return info_df
-                
-
 
 def getLabelFromFBID(id_list, verbose = False):
     '''Takes a list of Freebase IDs as input and returns
-    a Pandas dataframe with the according freebase IDs 
+    a Pandas dataframe with the according freebase IDs labels
     '''
     # Allows to print items only if verbose is set to True
     # Does nothing in case of false 
@@ -90,7 +91,7 @@ def getLabelFromFBID(id_list, verbose = False):
         vprint = lambda *a: None
     vprint('Querying the id_list to api...')
     # Transform the list of FB ids into a string formatted
-    # For an SQL VALUE query
+    # For an SQL VALUE query, we get all labels with a single query
     freebase_ids = "\"" + "\" \"".join(id_list) + "\""
     query = '''
     PREFIX wd: <http://www.wikidata.org/entity/>
@@ -113,6 +114,12 @@ def getLabelFromFBID(id_list, verbose = False):
     #Transform the response payload into a Pandas dataframe
     results_df = pd.json_normalize(results['results']['bindings'])
     return results_df[["freebaseID.value","sLabel.value"]]
+
+# Ref : https://stackoverflow.com/questions/5980042/how-to-implement-the-verbose-or-v-option-into-a-script
+def _verboseprint(*args):
+    '''Prints all elements given as argument.'''
+    for arg in args:
+        print(arg)
 
 if __name__ == '__main__':
     pass
