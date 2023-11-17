@@ -51,9 +51,7 @@ Our project aims to determine how diversity within a film impacts the film's per
 * Improved casting performance, thereby confirming our initial thesis.
 * A broader audience that identifies with the ethnicities depicted in the film.
 
-Therefore, not only will it be necessary to establish the correlation between a film and its success, but a significant challenge will be to determine the causal effect behind this potential correlation.
-
-Movies are subject to a lot of variability in terms of production and our analysis will be subject to a strong bias. Therefore, it will be very important to set up a causal analysis that rules out most of this bias as well as keeping enough data for it to be representative. Every step of the analysis will require a meticulous choice and handling of the data we will process.  
+Therefore, not only will it be necessary to establish the correlation between a film and its success, but a significant challenge will be to determine the causal effect behind this potential correlation. Movies are subject to a lot of variability in terms of production and our analysis will be subject to strong biases. It will be very important to set up a causal analysis that rules out most of this bias as well as keeping enough data for it to be representative. Every step of the analysis will require a meticulous choice and handling of the data we will process.  
 
 # Proposed timeline
 
@@ -72,4 +70,4 @@ Date | Task
 
 # Organization within the team
 
-The tasks are distributed fairly such that each of us will contribute to the project. We are planning several meetings in the remaining weeks to discuss the issues we are facing and the progress of our tasks. 
+The tasks are distributed fairly such that each of us will contribute to the project. We are planning several meetings in the remaining weeks to discuss the issues we are facing and the progress of our tasks.
