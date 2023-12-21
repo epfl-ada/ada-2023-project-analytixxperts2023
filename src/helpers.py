@@ -309,6 +309,189 @@ def year_release_split(df, number_parts):
 
 
 ## Now we define some utility functions
+
+def common_movie_gender(str1, str2):  
+    '''
+    Check if two movies have at least one common genre
+
+    Parameters:
+    -str1: A string
+    -str2: A string
+
+    Return:
+    -common_elements: A boolean
+    '''
+    # Convert string representation of lists to actual lists
+    list1 = [genre.strip() for genre in str1.strip("[]").split(",")]
+    list2 = [genre.strip() for genre in str2.strip("[]").split(",")]
+
+    set1 = set(list1)
+    set2 = set(list2)
+    common_elements = set1.intersection(set2)
+    return common_elements
+
+    
+def min_max_scaling(df, column_name):
+    '''
+    Scale the values of a column between 0 and 1
+
+    Parameters:
+    -df: A dataframe
+    -column_name: A list of string
+
+    Return:
+    -df: A dataframe 
+    '''
+    for col in column_name:
+        df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min())
+    return df
+
+def binarize_diversity(df, column_name):
+    '''
+    Binarize the diversity column using the median value
+
+    Parameters:
+    -df: A dataframe
+    -column_name: A string
+
+    Return: 
+    -df: A dataframe 
+    '''
+    median_value = df[column_name].median()
+    df['treat'] = np.where(df[column_name] > median_value, 1, 0)
+    return df
+
+def add_propensity_score(df,formula_propensity_score,diversity_name,column_name):
+    '''
+    Add a column with the propensity score to the dataframe
+
+    Parameters:
+    -df: A dataframe
+    -formula_propensity_score: A string
+    -diversity_name: A string
+    -column_name: A string
+    
+    Return: 
+    -df: A dataframe 
+    '''
+    df = binarize_diversity(df,diversity_name)
+    df = min_max_scaling(df,column_name)
+    mod = smf.logit(formula= formula_propensity_score, data=df)
+    res = mod.fit(disp=False)
+    df['Propensity_score'] = res.predict()
+    return df
+
+def get_similarity(propensity_score1, propensity_score2):
+    '''
+    Calculate similarity for instances with given propensity scores
+
+    Parameters:
+    -propensity_score1: A float
+    -propensity_score2: A float
+    
+    Return: A float
+    '''
+    return 1-np.abs(propensity_score1-propensity_score2)
+
+def compute_balance_df(df): 
+    '''
+    Compute a balanced dataframe using the propensity score
+
+    Parameters:
+    -df: A dataframe
+
+    Return: 
+    -df: A dataframe
+    '''
+    # Separate the treatment and control groups
+    treatment_df = df[df['treat'] == 1]
+    control_df = df[df['treat'] == 0]
+
+    # Create an empty graph
+    G = nx.Graph()
+
+    # Loop through all the pairs of instances
+    for control_id, control_row in control_df.iterrows():
+        for treatment_id, treatment_row in treatment_df.iterrows():
+            # Check if the two instances have the same number of languages and at least one common genre
+            if (control_row['movie_languages_count'] == treatment_row['movie_languages_count']) \
+                and common_movie_gender(control_row['movie_genres'], treatment_row['movie_genres']):
+                # Calculate the similarity 
+                similarity = get_similarity(control_row['Propensity_score'],
+                                            treatment_row['Propensity_score'])
+
+                # Add an edge between the two instances weighted by the similarity between them
+                G.add_weighted_edges_from([(control_id, treatment_id, similarity)])
+
+    # Generate and return the maximum weight matching on the generated graph
+    matching = nx.max_weight_matching(G)
+
+    matched = [i[0] for i in list(matching)] + [i[1] for i in list(matching)]
+    balanced_df = df.loc[matched]
+    return balanced_df
+
+def regression(df,formula,formula_propensity_score,diversity_name,column_name):
+    '''
+    Perform an ols regression on a dataframe according to the formula
+
+    Parameters:
+    -df: A dataframe
+    -formula: A string
+    -formula_propensity_score: A string
+    -diversity_name: A string
+    -column_name: A lsit of string
+
+    Return: 
+    -balanced_df: A dataframe 
+    -mod: A model
+    '''
+    df = add_propensity_score(df, formula_propensity_score, diversity_name, column_name)
+    balanced_df = compute_balance_df(df)
+    mod = smf.ols(formula=formula, data=balanced_df)
+    return balanced_df,mod
+
+
+def compute_all_regressions(period_df,formula,formula_propensity_score,diversity_name,columns):
+    '''
+    Perform the regression for each period and store the results in a list
+
+    Parameters:
+    -period_df: A dataframe
+    -formula: A string
+    -formula_propensity_score: A string
+    -diversity_name: A string
+    -columns: A lsit of string
+
+
+    Return: 
+    -balanced_dfs: A list of tuples containing the balanced dataframe
+    -mods: A list of tuples containing the model
+    '''
+    # Create an empty list to store the results
+    results = []
+
+    # Iterate over periods
+    for period_num in range(1, 11):
+        period_key = f'df_period{period_num}'
+        
+        # Perform regression for each period
+        balanced_df, mod = regression(
+            period_df[period_key],
+            formula=formula,
+            formula_propensity_score=formula_propensity_score,
+            diversity_name=diversity_name,
+            column_name=columns
+        )
+        
+        # Store the results in a tuple and append to the list
+        result = (balanced_df, mod)
+        results.append(result)
+
+    # Extract the results for each period
+    balanced_dfs, mods = zip(*results)
+    print("done")
+    return balanced_dfs,mods
+
 def common_movie_genre(str1, str2, similarity_rate = 1.):  #check if two movies have at least one common genre
     """Parse and compare two sets of movie genres and returns true if, given a certain threshold, movie genres are
        considered to match and return False otherwise.
@@ -602,183 +785,3 @@ def plot_comparison(balanced_dfs,cutoff,param_perf,movie_charac):
     plt.tight_layout()
     plt.show()
 
-def common_movie_gender(str1, str2):  
-    '''
-    Check if two movies have at least one common genre
-
-    Parameters:
-    -str1: A string
-    -str2: A string
-
-    Return:
-    -common_elements: A boolean
-    '''
-    # Convert string representation of lists to actual lists
-    list1 = [genre.strip() for genre in str1.strip("[]").split(",")]
-    list2 = [genre.strip() for genre in str2.strip("[]").split(",")]
-
-    set1 = set(list1)
-    set2 = set(list2)
-    common_elements = set1.intersection(set2)
-    return common_elements
-
-    
-def min_max_scaling(df, column_name):
-    '''
-    Scale the values of a column between 0 and 1
-
-    Parameters:
-    -df: A dataframe
-    -column_name: A list of string
-
-    Return:
-    -df: A dataframe 
-    '''
-    for col in column_name:
-        df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min())
-    return df
-
-def binarize_diversity(df, column_name):
-    '''
-    Binarize the diversity column using the median value
-
-    Parameters:
-    -df: A dataframe
-    -column_name: A string
-
-    Return: 
-    -df: A dataframe 
-    '''
-    median_value = df[column_name].median()
-    df['treat'] = np.where(df[column_name] > median_value, 1, 0)
-    return df
-
-def add_propensity_score(df,formula_propensity_score,diversity_name,column_name):
-    '''
-    Add a column with the propensity score to the dataframe
-
-    Parameters:
-    -df: A dataframe
-    -formula_propensity_score: A string
-    -diversity_name: A string
-    -column_name: A string
-    
-    Return: 
-    -df: A dataframe 
-    '''
-    df = binarize_diversity(df,diversity_name)
-    df = min_max_scaling(df,column_name)
-    mod = smf.logit(formula= formula_propensity_score, data=df)
-    res = mod.fit(disp=False)
-    df['Propensity_score'] = res.predict()
-    return df
-
-def get_similarity(propensity_score1, propensity_score2):
-    '''
-    Calculate similarity for instances with given propensity scores
-
-    Parameters:
-    -propensity_score1: A float
-    -propensity_score2: A float
-    
-    Return: A float
-    '''
-    return 1-np.abs(propensity_score1-propensity_score2)
-
-def compute_balance_df(df): 
-    '''
-    Compute a balanced dataframe using the propensity score
-
-    Parameters:
-    -df: A dataframe
-
-    Return: 
-    -df: A dataframe
-    '''
-    # Separate the treatment and control groups
-    treatment_df = df[df['treat'] == 1]
-    control_df = df[df['treat'] == 0]
-
-    # Create an empty graph
-    G = nx.Graph()
-
-    # Loop through all the pairs of instances
-    for control_id, control_row in control_df.iterrows():
-        for treatment_id, treatment_row in treatment_df.iterrows():
-            # Check if the two instances have the same number of languages and at least one common genre
-            if (control_row['movie_languages_count'] == treatment_row['movie_languages_count']) \
-                and common_movie_gender(control_row['movie_genres'], treatment_row['movie_genres']):
-                # Calculate the similarity 
-                similarity = get_similarity(control_row['Propensity_score'],
-                                            treatment_row['Propensity_score'])
-
-                # Add an edge between the two instances weighted by the similarity between them
-                G.add_weighted_edges_from([(control_id, treatment_id, similarity)])
-
-    # Generate and return the maximum weight matching on the generated graph
-    matching = nx.max_weight_matching(G)
-
-    matched = [i[0] for i in list(matching)] + [i[1] for i in list(matching)]
-    balanced_df = df.loc[matched]
-    return balanced_df
-
-def regression(df,formula,formula_propensity_score,diversity_name,column_name):
-    '''
-    Perform an ols regression on a dataframe according to the formula
-
-    Parameters:
-    -df: A dataframe
-    -formula: A string
-    -formula_propensity_score: A string
-    -diversity_name: A string
-    -column_name: A lsit of string
-
-    Return: 
-    -balanced_df: A dataframe 
-    -mod: A model
-    '''
-    df = add_propensity_score(df, formula_propensity_score, diversity_name, column_name)
-    balanced_df = compute_balance_df(df)
-    mod = smf.ols(formula=formula, data=balanced_df)
-    return balanced_df,mod
-
-
-def compute_all_regressions(period_df,formula,formula_propensity_score,diversity_name,columns):
-    '''
-    Perform the regression for each period and store the results in a list
-
-    Parameters:
-    -period_df: A dataframe
-    -formula: A string
-    -formula_propensity_score: A string
-    -diversity_name: A string
-    -columns: A lsit of string
-
-
-    Return: 
-    -balanced_dfs: A list of tuples containing the balanced dataframe
-    -mods: A list of tuples containing the model
-    '''
-    # Create an empty list to store the results
-    results = []
-
-    # Iterate over periods
-    for period_num in range(1, 11):
-        period_key = f'df_period{period_num}'
-        
-        # Perform regression for each period
-        balanced_df, mod = regression(
-            period_df[period_key],
-            formula=formula,
-            formula_propensity_score=formula_propensity_score,
-            diversity_name=diversity_name,
-            column_name=columns
-        )
-        
-        # Store the results in a tuple and append to the list
-        result = (balanced_df, mod)
-        results.append(result)
-
-    # Extract the results for each period
-    balanced_dfs, mods = zip(*results)
-    return balanced_dfs,mods
