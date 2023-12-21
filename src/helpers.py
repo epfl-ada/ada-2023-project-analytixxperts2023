@@ -534,3 +534,251 @@ def plot_feature_distrib(df):
 
 
 
+def plot_regression_line(balanced_dfs,mods,
+                         cutoff,param_div,param_perf,
+                         xlabel='Ethnicity Diversity',ylabel='Box Office Revenue'):
+    '''
+    Plot the regression line and the datapoints for each period
+    '''
+    fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(25, 8))
+    axes = axes.flatten()
+    for i in range(10):
+        df = balanced_dfs[i]
+        mod = mods[i]
+        #Extract the intercept and the slope
+        intercept_coef = mod.fit().params['Intercept']
+        ethnicity_coef = mod.fit().params[param_div]
+        #Plot the regression line
+        x_values = np.linspace(min(df[param_div]), max(df[param_div]), 100)
+        y_values = intercept_coef + ethnicity_coef * x_values
+        axes[i].plot(x_values, y_values, color='red', label='Regression Line')
+        #Plot the datapoints
+        axes[i].scatter(df[param_div], df[param_perf], s=5, label='Data Points')
+        axes[i].set_xlabel(f'{xlabel}: pval= {mod.fit().pvalues[param_div].round(3)}, intercept pval= {mod.fit().pvalues["Intercept"].round(3)}, \n intercept={mod.fit().params["Intercept"].round(3)} ,slope= {mod.fit().params[param_div].round(3)}')
+        axes[i].set_ylabel(ylabel)
+        axes[i].legend()
+        if i < len(cutoff)-1:
+            axes[i].set_title(f'{int(cutoff[i])} - {int(cutoff[i+1])}')
+        if i == len(cutoff)-1:
+            axes[i].set_title(f'{int(cutoff[i])} - {int(df["movie_release_year"].max())}')
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_comparison(balanced_dfs,cutoff,param_perf,movie_charac):
+    '''
+    Plot the distribution of the performance parameter for each group for each period
+    '''
+    fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(25, 8))
+    axes = axes.flatten()
+    for i in range(10):
+        df = balanced_dfs[i]
+        #Recollect the movie box office revenue for each movie
+        movie_charac['movie_name'].drop_duplicates(keep='first',inplace=True)
+        movie_charac_reduced = movie_charac[['movie_freebase_id','movie_box_office_revenue']]
+        movie_charac_reduced.rename(columns={'movie_box_office_revenue':'Box_office'},inplace=True)
+        merge = pd.merge(balanced_dfs[i],movie_charac_reduced,how='left',on='movie_freebase_id')
+        #Split the dataframe according to the group
+        treatment_df = merge[merge['treat'] == 1]
+        control_df = merge[merge['treat'] == 0]
+        ax = axes[i]
+        #Plot the distribution of the performance parameter for each group
+        if param_perf == 'Box_office':
+            sns.histplot(treatment_df[param_perf], label='Treat', kde=True, stat='density', color='blue', log_scale=True, ax=ax)
+            sns.histplot(control_df[param_perf], label='Control', kde=True, stat='density', color='orange', log_scale=True, ax=ax)
+        elif param_perf == 'rating_average':
+            sns.histplot(treatment_df[param_perf],label='Treat', kde=True, stat='density', color='blue', ax=ax)
+            sns.histplot(control_df[param_perf],label='Control', kde=True, stat='density', color='orange', ax=ax)
+        if param_perf == 'Box_office':
+            ax.set_xlabel('Movie Box Office Revenue')
+        elif param_perf == 'rating_average':
+            ax.set_xlabel('Movie Rating Average')
+        ax.set_ylabel('Density')
+        ax.legend()
+        if i < len(cutoff)-1:
+            ax.set_title(f'{int(cutoff[i])} - {int(cutoff[i+1])}')
+        if i == len(cutoff)-1:
+            ax.set_title(f'{int(cutoff[i])} - {int(df["movie_release_year"].max())}')
+    plt.tight_layout()
+    plt.show()
+
+def common_movie_gender(str1, str2):  
+    '''
+    Check if two movies have at least one common genre
+
+    Parameters:
+    -str1: A string
+    -str2: A string
+
+    Return:
+    -common_elements: A boolean
+    '''
+    # Convert string representation of lists to actual lists
+    list1 = [genre.strip() for genre in str1.strip("[]").split(",")]
+    list2 = [genre.strip() for genre in str2.strip("[]").split(",")]
+
+    set1 = set(list1)
+    set2 = set(list2)
+    common_elements = set1.intersection(set2)
+    return common_elements
+
+    
+def min_max_scaling(df, column_name):
+    '''
+    Scale the values of a column between 0 and 1
+
+    Parameters:
+    -df: A dataframe
+    -column_name: A list of string
+
+    Return:
+    -df: A dataframe 
+    '''
+    for col in column_name:
+        df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min())
+    return df
+
+def binarize_diversity(df, column_name):
+    '''
+    Binarize the diversity column using the median value
+
+    Parameters:
+    -df: A dataframe
+    -column_name: A string
+
+    Return: 
+    -df: A dataframe 
+    '''
+    median_value = df[column_name].median()
+    df['treat'] = np.where(df[column_name] > median_value, 1, 0)
+    return df
+
+def add_propensity_score(df,formula_propensity_score,diversity_name,column_name):
+    '''
+    Add a column with the propensity score to the dataframe
+
+    Parameters:
+    -df: A dataframe
+    -formula_propensity_score: A string
+    -diversity_name: A string
+    -column_name: A string
+    
+    Return: 
+    -df: A dataframe 
+    '''
+    df = binarize_diversity(df,diversity_name)
+    df = min_max_scaling(df,column_name)
+    mod = smf.logit(formula= formula_propensity_score, data=df)
+    res = mod.fit(disp=False)
+    df['Propensity_score'] = res.predict()
+    return df
+
+def get_similarity(propensity_score1, propensity_score2):
+    '''
+    Calculate similarity for instances with given propensity scores
+
+    Parameters:
+    -propensity_score1: A float
+    -propensity_score2: A float
+    
+    Return: A float
+    '''
+    return 1-np.abs(propensity_score1-propensity_score2)
+
+def compute_balance_df(df): 
+    '''
+    Compute a balanced dataframe using the propensity score
+
+    Parameters:
+    -df: A dataframe
+
+    Return: 
+    -df: A dataframe
+    '''
+    # Separate the treatment and control groups
+    treatment_df = df[df['treat'] == 1]
+    control_df = df[df['treat'] == 0]
+
+    # Create an empty graph
+    G = nx.Graph()
+
+    # Loop through all the pairs of instances
+    for control_id, control_row in control_df.iterrows():
+        for treatment_id, treatment_row in treatment_df.iterrows():
+            # Check if the two instances have the same number of languages and at least one common genre
+            if (control_row['movie_languages_count'] == treatment_row['movie_languages_count']) \
+                and common_movie_gender(control_row['movie_genres'], treatment_row['movie_genres']):
+                # Calculate the similarity 
+                similarity = get_similarity(control_row['Propensity_score'],
+                                            treatment_row['Propensity_score'])
+
+                # Add an edge between the two instances weighted by the similarity between them
+                G.add_weighted_edges_from([(control_id, treatment_id, similarity)])
+
+    # Generate and return the maximum weight matching on the generated graph
+    matching = nx.max_weight_matching(G)
+
+    matched = [i[0] for i in list(matching)] + [i[1] for i in list(matching)]
+    balanced_df = df.loc[matched]
+    return balanced_df
+
+def regression(df,formula,formula_propensity_score,diversity_name,column_name):
+    '''
+    Perform an ols regression on a dataframe according to the formula
+
+    Parameters:
+    -df: A dataframe
+    -formula: A string
+    -formula_propensity_score: A string
+    -diversity_name: A string
+    -column_name: A lsit of string
+
+    Return: 
+    -balanced_df: A dataframe 
+    -mod: A model
+    '''
+    df = add_propensity_score(df, formula_propensity_score, diversity_name, column_name)
+    balanced_df = compute_balance_df(df)
+    mod = smf.ols(formula=formula, data=balanced_df)
+    return balanced_df,mod
+
+
+def compute_all_regressions(period_df,formula,formula_propensity_score,diversity_name,columns):
+    '''
+    Perform the regression for each period and store the results in a list
+
+    Parameters:
+    -period_df: A dataframe
+    -formula: A string
+    -formula_propensity_score: A string
+    -diversity_name: A string
+    -columns: A lsit of string
+
+
+    Return: 
+    -balanced_dfs: A list of tuples containing the balanced dataframe
+    -mods: A list of tuples containing the model
+    '''
+    # Create an empty list to store the results
+    results = []
+
+    # Iterate over periods
+    for period_num in range(1, 11):
+        period_key = f'df_period{period_num}'
+        
+        # Perform regression for each period
+        balanced_df, mod = regression(
+            period_df[period_key],
+            formula=formula,
+            formula_propensity_score=formula_propensity_score,
+            diversity_name=diversity_name,
+            column_name=columns
+        )
+        
+        # Store the results in a tuple and append to the list
+        result = (balanced_df, mod)
+        results.append(result)
+
+    # Extract the results for each period
+    balanced_dfs, mods = zip(*results)
+    return balanced_dfs,mods
