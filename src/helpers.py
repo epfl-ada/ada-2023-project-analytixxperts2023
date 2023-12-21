@@ -232,3 +232,70 @@ def normalize_columns_zscore(df, columns_to_normalize):
         df[column] = df[column].apply(lambda x: (x - mean) / std if not pd.isna(x) else x)
 
     return df
+
+
+
+def filtering(df, performance_param):
+    ''' 
+    Filter the dataframe according 
+    to the performance parameter
+
+    Parameters:
+    -df: A dataframe
+    -performance_param: A string
+    
+    Return: 
+    -A dataframe
+    '''
+    df_copy = df.copy()
+    if (performance_param == 'box_office'):
+        df_copy.dropna(subset=['movie_box_office_revenue'],inplace=True)
+        return df_copy
+
+    elif (performance_param == 'rating'):
+        vote_threshold = 100
+        df_copy.dropna(subset=['rating_average','movie_box_office_revenue'],inplace=True)
+        df_bis = df_copy[df_copy['rating_count'] > vote_threshold]
+        return df_bis
+
+    else:
+        print("Invalid parameters")
+        
+    
+
+def year_release_split(df, number_parts):
+    ''' 
+    Split the dataframe in number_parts 
+    according to the year of release
+
+    Parameters:
+    -df: A dataframe
+    -number_parts: An integer
+    
+    Return: 
+    -df: A dictionary of dataframes 
+    -cutoff: A list of the cutoff years
+    '''
+    total_size = df.shape[0]
+    share = int(total_size/(number_parts))
+    cumulative_data = df['movie_release_year'].value_counts().sort_index().cumsum()
+    cutoff = []
+    for i in range(number_parts):
+        relevant_data = cumulative_data[cumulative_data > (i)*share] 
+        if not relevant_data.empty:
+            cutoff.append(relevant_data.index[0])
+
+    period_dataframes = {}
+    for i in range(len(cutoff)):
+        if i < len(cutoff)-1:
+            period_df = df[
+                (df['movie_release_year'] > cutoff[i]) &
+                (df['movie_release_year'] <= cutoff[i+1])
+            ]
+        if i == len(cutoff)-1:
+            period_df = df[
+                (df['movie_release_year'] > cutoff[i])
+            ]
+
+        period_dataframes[f'df_period{i+1}'] = period_df
+    return period_dataframes,cutoff  
