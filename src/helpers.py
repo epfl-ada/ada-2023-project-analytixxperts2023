@@ -1,5 +1,12 @@
-import pandas as pd
 import ast
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import networkx as nx
+import matplotlib.pyplot as plt
+import statsmodels.formula.api as smf
+
+
 
 def load_movies():
     """
@@ -299,3 +306,231 @@ def year_release_split(df, number_parts):
 
         period_dataframes[f'df_period{i+1}'] = period_df
     return period_dataframes,cutoff  
+
+
+## Now we define some utility functions
+def common_movie_genre(str1, str2, similarity_rate = 1.):  #check if two movies have at least one common genre
+    """Parse and compare two sets of movie genres and returns true if, given a certain threshold, movie genres are
+       considered to match and return False otherwise.
+
+    Args:
+        str1 (str): First movie genre string. 
+        str2 (str): Second movie genre string.
+        similarity_rate (float, optional): proportion of the genre set with the highest number of elements that are
+                                           considered as a match.
+
+    Returns:
+        bool: True if enough genres are matching, otherwise false
+    """    
+    list1 = [genre.strip() for genre in str1.strip("[]").split(",")]
+    list2 = [genre.strip() for genre in str2.strip("[]").split(",")]
+
+    set1 = set(list1)
+    set2 = set(list2)
+    intersection_set = len(set1.intersection(set2))
+
+    if intersection_set/max([len(set1),len(set2)]) >= similarity_rate:
+        return True
+    else:
+        return False
+    
+
+def match_on_attributes(sample1, sample2):
+    """Determines exact matching between two samples of the movie dataset based on genre.
+
+    Args:
+        sample1 (pd.Series): First sample to match
+        sample2 (pd.Series): Second sample to match
+
+    Returns:
+        bool: Returns true if the samples can be matched, false otherwise
+    """    
+    cond = True
+    cond = cond & common_movie_genre(sample1['movie_genres'],sample2['movie_genres'], similarity_rate=1/2)
+    return cond
+
+    
+
+def add_propensity_score(df, formula):
+    """Fits a linear regressor to a dataframe given a formula to compute propensity scores.
+
+    Args:
+        df (pd.Dataframe): Data on which the regression is made.
+        formula (string): logical formula used for the linear regressor
+
+    Returns:
+        pd.Dataframe: _description_
+    """
+    #df = standardize_continuous_features(df)
+    mod = smf.ols(formula= formula, data=df)
+    res = mod.fit()
+    df['Propensity_score'] = res.predict()
+    return df
+
+def get_similarity(propensity_score1, propensity_score2):
+    '''Computes a similarity metric based on propensity scores of two samples.
+       Similar elements will have a value close to 1 and different ones close to 0'''
+    return 1-np.abs(propensity_score1-propensity_score2)
+
+
+def filtering(df, performance_param):
+    """Filters NaN values in dataframe for performance variables.
+
+    Args:
+        df (pd.Dataframe): dataframe with the values to filter
+        performance_param (string): name of the columns/variable to filter
+
+    Returns:
+        pd.Dataframe: Dataframe filtered based on the performance variables 
+    """    
+    df_copy = df.copy()
+    if (performance_param == 'movie_box_office_revenue'):
+        df_copy.dropna(subset=['movie_box_office_revenue'],inplace=True)
+        return df_copy
+
+    elif (performance_param == 'rating_average'):
+        df_copy.dropna(subset=['rating_average'],inplace=True)
+        df_bis = df_copy[df_copy['rating_count'] > 100]
+        return df_bis
+
+    else:
+        print("Invalid parameters")
+
+
+def define_treat_control(df,match_on):
+    """Creates treatment and control groups depending on the chosen diversity feature. 
+       The split is based on the median value of the distribution.
+
+    Args:
+        df (pd.Dataframe): Dataframe containing the specified diversity feature
+        match_on (str): Feature on which the treatment control split is made
+    """    
+    if match_on == 'ethnicity_diversity':
+        threshold = df[match_on].median()
+    elif match_on == 'gender_diversity':
+        threshold = df[match_on].median()
+    else:
+        threshold=None
+        print('Error in the feature that needs to be matched')
+
+    # Assign control or treatment status depending on threshold
+    df['treatment'] = np.where(df[match_on] > threshold, 1, 0)
+
+    return df
+
+
+
+
+def balanced_dataset(data, match_on, perf_var, out_df_name = None, plot_distrib=False):
+    """Performs the pipeline to create control and treatment groups with matching of the confounders.
+       Based on the steps of Exercise 05 - Causal analysis of observational data.
+       Credits to: [Tiziano Piccardi](https://piccardi.me/) and [Kristina Gligoric](https://kristinagligoric.github.io/)
+
+    Args:
+        data (pd.Dataframe): Dataframe on which the balancing needs to be performed.
+        match_on (str): Diversity variable that will be used to create control and treatment variables.
+        perf_var (str): Performance variable that will be used to filter the dataframe before processing.
+        out_df_name (str, optional): Will save the dataset to csv if any name is provided . Defaults to None.
+        plot_distrib (bool, optional): Plots the distribution of matching features for treatment and control before matching
+
+    Returns:
+        pd.Dataframe: Dataframe of matches made based on propensity scores.
+    """    
+    print('filtering df')
+    df = filtering(data,perf_var)
+    df = define_treat_control(df=df, match_on=match_on)
+    if plot_distrib:
+        plot_feature_distrib(df=df)
+    
+    # Make the prediction of propensity scores using a linear regressor
+    mod = smf.logit(formula= 'treatment ~ movie_release_year + movie_languages_count', data=df)
+    res = mod.fit()
+    df['Propensity_score'] = res.predict()
+    
+    print('Creating graph')
+    treatment = df[df['treatment'] == 1]
+    control = df[df['treatment'] == 0]
+
+    G = nx.Graph()
+    # Loop through all the pairs of instances
+    for control_id, control_row in control.iterrows():
+        for treatment_id, treatment_row in treatment.iterrows():
+            if (match_on_attributes(control_row,treatment_row)):
+                # Compute the similarity 
+                similarity = get_similarity(control_row['Propensity_score'],
+                                            treatment_row['Propensity_score'])
+
+                # Add an edge between the two instances weighted by the similarity between them
+                G.add_weighted_edges_from([(control_id, treatment_id, similarity)])
+
+    # Generate and return the maximum weight matching on the generated graph
+    print('performing matching')
+    matching = nx.max_weight_matching(G)
+
+    matched = [i[0] for i in list(matching)] + [i[1] for i in list(matching)]
+    balanced_df = df.loc[matched]
+    
+    # Save the balanced dataframe if a name was specified
+    if out_df_name:
+        print('saving file')
+        file = './generated/' + out_df_name
+    balanced_df.to_csv(file)
+    return balanced_df
+
+def compute_results(balanced_df, perf_var, diversity_var):
+    """Plots control and treatment distributions and performs a statistical analysis using linear regression.
+
+    Args:
+        balanced_df (pd.Dataframe): Dataframe with a control and treatment group(in a 'treatment' column) and matched samples
+        perf_var (str): Name of the performance variable to plot and compare with linear regression.
+
+
+    Returns:
+        TODO: regressive model trained on the balanced dataframe  
+    """    
+    # Compute regressive line parameters
+    treatment_balanced = balanced_df[balanced_df['treatment'] == 1]
+    control_balanced = balanced_df[balanced_df['treatment'] == 0]
+    mod = smf.ols(formula= '{} ~ C(treatment)'.format(perf_var), data=balanced_df)
+    res = mod.fit()
+
+    # Plot density distributions for treatment and control groups
+    plt.figure()
+    ax = sns.histplot(treatment_balanced[perf_var], kde=True, stat='density', color='blue', label='High diversity', log_scale=True)
+    ax = sns.histplot(control_balanced[perf_var], kde=True, stat='density', color='orange', label='Low diversity',log_scale=True)
+    ax.set(title='{} density distribution after matching'.format(perf_var),xlabel='z-scored {}'.format(perf_var), ylabel='Density')
+    plt.legend()
+
+    # Scatter plot with a regression line
+    intercept = mod.fit().params['Intercept']
+    ethnicity_coef = mod.fit().params['C(treatment)[T.1]']
+    x_values = np.linspace(min(balanced_df[diversity_var]), max(balanced_df[diversity_var]), 100)
+    y_values = intercept + ethnicity_coef * x_values
+    plt.figure()
+    plt.title('Relationship between {} and {}'.format(diversity_var,perf_var))
+    plt.ylabel('z-scored {}'.format(perf_var))
+    sns.scatterplot(data=balanced_df,x=diversity_var,y=perf_var)
+    sns.lineplot(x=x_values,y=y_values,color='red')
+    plt.tight_layout()
+    plt.show()
+    print(res.summary())
+
+    return mod
+
+def plot_feature_distrib(df):
+    """Plots the distribution of features to match for treatment and control groups
+
+    Args:
+        df (pd.Dataframe): movie dataframe with identified treatment and control groups 
+    """   
+    fig, (ax1,ax2) = plt.subplots(2,1,figsize=(6,8), sharex=True)
+    sns.violinplot(data=df,x='treatment',y='movie_release_year',ax=ax1)
+    ax1.set_title('movies\' release year distributions')
+    sns.violinplot(data=df,x='treatment',y='movie_languages_count',ax=ax2)
+    ax2.set_title('movies\'s language count distributions')
+    plt.tight_layout()
+    plt.show()
+
+
+
+
