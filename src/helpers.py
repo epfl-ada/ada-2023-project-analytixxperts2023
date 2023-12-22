@@ -615,7 +615,7 @@ def balanced_dataset(data, match_on, perf_var, out_df_name = None, plot_distrib=
     balanced_df.to_csv(file)
     return balanced_df
 
-def compute_results(balanced_df, perf_var, diversity_var):
+def compute_results(balanced_df, perf_var, diversity_var, movie_charac=None):
     """Plots control and treatment distributions and performs a statistical analysis using linear regression.
 
     Args:
@@ -626,17 +626,34 @@ def compute_results(balanced_df, perf_var, diversity_var):
     Returns:
         TODO: regressive model trained on the balanced dataframe  
     """    
+    if perf_var == 'movie_box_office_revenue':
+        #Recollect the movie box office revenue for each movie and define some plotting parameters
+        movie_charac['movie_name'].drop_duplicates(keep='first',inplace=True)
+        movie_charac_reduced = movie_charac[['movie_freebase_id','movie_box_office_revenue']]
+        movie_charac_reduced = movie_charac_reduced.rename(columns={'movie_box_office_revenue':'Box_office'})
+        plot_df = pd.merge(balanced_df,movie_charac_reduced,how='left',on='movie_freebase_id').copy()
+        log_scaling = True
+        label = 'Box office revenue'
+        perf_var_density = 'Box_office'
+
+    else:
+        plot_df = balanced_df
+        log_scaling = False
+        label = 'Average ratings'
+        perf_var_density = perf_var
+
+    # print(plot_df)
     # Compute regressive line parameters
-    treatment_balanced = balanced_df[balanced_df['treatment'] == 1]
-    control_balanced = balanced_df[balanced_df['treatment'] == 0]
-    mod = smf.ols(formula= '{} ~ C(treatment)'.format(perf_var), data=balanced_df)
+    treatment_balanced = plot_df[plot_df['treatment'] == 1]
+    control_balanced = plot_df[plot_df['treatment'] == 0]
+    mod = smf.ols(formula= '{} ~ C(treatment)'.format(perf_var), data=plot_df)
     res = mod.fit()
 
     # Plot density distributions for treatment and control groups
     plt.figure()
-    ax = sns.histplot(treatment_balanced[perf_var], kde=True, stat='density', color='blue', label='High diversity', log_scale=True)
-    ax = sns.histplot(control_balanced[perf_var], kde=True, stat='density', color='orange', label='Low diversity',log_scale=True)
-    ax.set(title='{} density distribution after matching'.format(perf_var),xlabel='z-scored {}'.format(perf_var), ylabel='Density')
+    ax = sns.histplot(treatment_balanced[perf_var_density], kde=True, stat='density', color='blue', label='High diversity', log_scale=log_scaling)
+    ax = sns.histplot(control_balanced[perf_var_density], kde=True, stat='density', color='orange', label='Low diversity',log_scale=log_scaling)
+    ax.set(title='{} density distribution after matching'.format(label),xlabel=label, ylabel='Density')
     plt.legend()
 
     # Scatter plot with a regression line
@@ -646,7 +663,7 @@ def compute_results(balanced_df, perf_var, diversity_var):
     y_values = intercept + ethnicity_coef * x_values
     plt.figure()
     plt.title('Relationship between {} and {}'.format(diversity_var,perf_var))
-    plt.ylabel('z-scored {}'.format(perf_var))
+    plt.ylabel(label)
     sns.scatterplot(data=balanced_df,x=diversity_var,y=perf_var)
     sns.lineplot(x=x_values,y=y_values,color='red')
     plt.tight_layout()
