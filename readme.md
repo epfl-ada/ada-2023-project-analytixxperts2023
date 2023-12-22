@@ -69,7 +69,7 @@ Therefore, we abandoned this approach, which was, in any case, only an extension
 
 3) We had analyzed the influence of each measure of cast diversity on film performance metrics one by one. However, we also intended to analyze the influence of multiple measures simultaneously. Given the high number of combinations and the results from the individual measures, we judged that it probably wasn't relevant to proceed further.
 
-# Organization within the Team
+## Organization within the Team
 
 Member | Task
 :------|:-----
