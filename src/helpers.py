@@ -243,6 +243,7 @@ def normalize_columns_zscore(df, columns_to_normalize):
 
 
 
+
 def filtering(df, performance_param):
     ''' 
     Filter the dataframe according 
@@ -256,11 +257,11 @@ def filtering(df, performance_param):
     -A dataframe
     '''
     df_copy = df.copy()
-    if (performance_param == 'movie_box_office_revenue'):
+    if (performance_param == 'box_office'):
         df_copy.dropna(subset=['movie_box_office_revenue'],inplace=True)
         return df_copy
 
-    elif (performance_param == 'rating_average'):
+    elif (performance_param == 'rating'):
         vote_threshold = 100
         df_copy.dropna(subset=['rating_average','movie_box_office_revenue'],inplace=True)
         df_bis = df_copy[df_copy['rating_count'] > vote_threshold]
@@ -270,7 +271,6 @@ def filtering(df, performance_param):
         print("Invalid parameters")
         
     
-
 def year_release_split(df, number_parts):
     ''' 
     Split the dataframe in number_parts 
@@ -306,7 +306,7 @@ def year_release_split(df, number_parts):
             ]
 
         period_dataframes[f'df_period{i+1}'] = period_df
-    return period_dataframes,cutoff  
+    return period_dataframes,cutoff 
 
 
 ## Now we define some utility functions
